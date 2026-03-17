@@ -2,13 +2,12 @@ import streamlit as st
 import cv2
 import numpy as np
 from ultralytics import YOLO
-from PIL import Image
 import os
+import time
 
 st.set_page_config(page_title="口罩检测", layout="wide")
 
 st.title("😷 实时口罩检测")
-st.markdown("点击拍照按钮进行检测")
 
 # 加载模型
 @st.cache_resource
@@ -19,67 +18,50 @@ def load_model():
         st.stop()
     return YOLO(model_path)
 
-model = load_model()
-st.success("✅ 模型加载成功")
+# 初始化session state
+if 'running' not in st.session_state:
+    st.session_state.running = False
+if 'cap' not in st.session_state:
+    st.session_state.cap = None
 
-# 侧边栏配置
+model = load_model()
+
+# 侧边栏
 with st.sidebar:
     st.header("⚙️ 设置")
-    conf_threshold = st.slider("置信度阈值", 0.1, 1.0, 0.25, 0.05)
+    conf_threshold = st.slider("置信度阈值", 0.1, 1.0, 0.25)
     
-    if model and hasattr(model, 'names'):
-        st.write("检测类别:", list(model.names.values()))
+    if st.button("🎥 开始实时检测"):
+        st.session_state.running = True
+        st.session_state.cap = cv2.VideoCapture(0)
     
-    st.markdown("---")
-    st.markdown("### 使用说明")
-    st.markdown("1. 允许摄像头权限")
-    st.markdown("2. 点击拍照按钮")
-    st.markdown("3. 查看检测结果")
+    if st.button("⏹️ 停止"):
+        st.session_state.running = False
+        if st.session_state.cap:
+            st.session_state.cap.release()
 
-# 摄像头输入
-enable = st.checkbox("打开摄像头", value=True)
-img_file_buffer = st.camera_input("拍照检测", disabled=not enable)
+# 主显示区域
+frame_placeholder = st.empty()
+stats_placeholder = st.empty()
 
-if img_file_buffer is not None:
-    # 读取图像
-    bytes_data = img_file_buffer.getvalue()
-    
-    # 使用 OpenCV 读取
-    img_array = np.frombuffer(bytes_data, np.uint8)
-    img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
-    
-    # 显示原图和处理结果
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.image(img, channels="BGR", caption="原图", use_column_width=True)
-    
-    # YOLO检测
-    with st.spinner("检测中..."):
-        results = model(img, conf=conf_threshold, verbose=False)
-        annotated_img = results[0].plot()  # 返回BGR格式
-    
-    with col2:
-        st.image(annotated_img, channels="BGR", caption="检测结果", use_column_width=True)
-    
-    # 显示检测统计
-    if results[0].boxes is not None:
-        boxes = results[0].boxes
-        count = len(boxes)
+# 实时检测循环
+if st.session_state.running and st.session_state.cap:
+    ret, frame = st.session_state.cap.read()
+    if ret:
+        # YOLO检测
+        results = model(frame, conf=conf_threshold, verbose=False)
+        annotated_frame = results[0].plot()
         
-        if count > 0:
-            st.success(f"✅ 检测到 {count} 个目标")
-            
-            # 统计各类别数量
-            class_counts = {}
-            for box in boxes:
-                cls = int(box.cls[0].item())
-                name = results[0].names[cls]
-                class_counts[name] = class_counts.get(name, 0) + 1
-            
-            # 显示详细统计
-            st.write("检测详情：")
-            for name, cnt in class_counts.items():
-                st.write(f"- {name}: {cnt}")
-        else:
-            st.info("未检测到目标")
+        # 显示
+        frame_placeholder.image(annotated_frame, channels="BGR", use_column_width=True)
+        
+        # 显示统计
+        count = len(results[0].boxes) if results[0].boxes else 0
+        stats_placeholder.info(f"检测目标数: {count}")
+        
+        # 继续下一帧
+        time.sleep(0.03)
+        st.rerun()
+    else:
+        st.session_state.running = False
+        st.error("视频流结束")
