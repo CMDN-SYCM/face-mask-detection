@@ -3,7 +3,6 @@ import cv2
 import numpy as np
 from ultralytics import YOLO
 import os
-import time
 
 st.set_page_config(page_title="口罩检测", layout="wide")
 
@@ -18,50 +17,55 @@ def load_model():
         st.stop()
     return YOLO(model_path)
 
-# 初始化session state
-if 'running' not in st.session_state:
-    st.session_state.running = False
-if 'cap' not in st.session_state:
-    st.session_state.cap = None
-
 model = load_model()
 
-# 侧边栏
+# 侧边栏配置
 with st.sidebar:
     st.header("⚙️ 设置")
     conf_threshold = st.slider("置信度阈值", 0.1, 1.0, 0.25)
     
-    if st.button("🎥 开始实时检测"):
-        st.session_state.running = True
-        st.session_state.cap = cv2.VideoCapture(0)
-    
-    if st.button("⏹️ 停止"):
-        st.session_state.running = False
-        if st.session_state.cap:
-            st.session_state.cap.release()
+    # 控制按钮
+    if st.button("🎥 开始检测"):
+        st.session_state['detect'] = True
+    if st.button("⏹️ 停止检测"):
+        st.session_state['detect'] = False
 
-# 主显示区域
+# 初始化session state
+if 'detect' not in st.session_state:
+    st.session_state['detect'] = False
+
+# 视频显示区域
 frame_placeholder = st.empty()
-stats_placeholder = st.empty()
+status_text = st.empty()
 
 # 实时检测循环
-if st.session_state.running and st.session_state.cap:
-    ret, frame = st.session_state.cap.read()
-    if ret:
-        # YOLO检测
-        results = model(frame, conf=conf_threshold, verbose=False)
-        annotated_frame = results[0].plot()
-        
-        # 显示
-        frame_placeholder.image(annotated_frame, channels="BGR", use_column_width=True)
-        
-        # 显示统计
-        count = len(results[0].boxes) if results[0].boxes else 0
-        stats_placeholder.info(f"检测目标数: {count}")
-        
-        # 继续下一帧
-        time.sleep(0.03)
-        st.rerun()
+if st.session_state['detect']:
+    # 打开摄像头
+    cap = cv2.VideoCapture(0)
+    
+    if not cap.isOpened():
+        st.error("无法打开摄像头")
+        st.session_state['detect'] = False
     else:
-        st.session_state.running = False
-        st.error("视频流结束")
+        status_text.success("✅ 实时检测中...")
+        
+        # 连续读取帧
+        while st.session_state['detect']:
+            ret, frame = cap.read()
+            if not ret:
+                st.error("视频流结束")
+                break
+            
+            # YOLO检测
+            results = model(frame, conf=conf_threshold, verbose=False)
+            annotated_frame = results[0].plot()
+            
+            # 显示结果
+            frame_placeholder.image(annotated_frame, channels="BGR", use_column_width=True)
+        
+        # 释放摄像头
+        cap.release()
+        status_text.info("⏸️ 检测已停止")
+else:
+    frame_placeholder.empty()
+    status_text.info("点击左侧'开始检测'按钮启动摄像头")
