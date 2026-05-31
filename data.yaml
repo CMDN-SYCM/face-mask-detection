@@ -1,0 +1,9 @@
+train: ../口罩/datasets/train/images
+val: ../口罩/datasets/val/images
+test: ../口罩/datasets/test/images
+
+# 类别数
+nc: 3
+
+# 类别名称
+names: ["without_mask", "with_mask", "mask_weared_incorrect"]

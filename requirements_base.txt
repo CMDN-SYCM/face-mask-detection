@@ -1,0 +1,8 @@
+--index-url https://pypi.doubanio.com/simple
+
+Pillow==11.1.0
+opencv-python==4.11.0.86
+numpy==1.26.4
+ultralytics==8.3.70
+streamlit==1.12.0
+altair==4.0.0
